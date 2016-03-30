@@ -169,7 +169,7 @@ where H: headers::Header + headers::HeaderFormat {
     }
 }
 
-impl<'a, 'b, H> Modifier<Request<'a, 'b>> for Header<H>
+impl<'a, H> Modifier<Request<'a>> for Header<H>
 where H: headers::Header + headers::HeaderFormat {
     fn modify(self, res: &mut Request) {
         res.headers.set(self.0);

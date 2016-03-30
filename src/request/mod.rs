@@ -3,6 +3,7 @@
 use std::io::{self, Read};
 use std::net::SocketAddr;
 use std::fmt::{self, Debug};
+use std::mem::transmute;
 
 use hyper::uri::RequestUri::{AbsoluteUri, AbsolutePath};
 use hyper::net::NetworkStream;
@@ -25,7 +26,7 @@ mod url;
 ///
 /// Stores all the properties of the client's request plus
 /// an `TypeMap` for data communication between middleware.
-pub struct Request<'a, 'b: 'a> {
+pub struct Request<'a> {
     /// The requested URL.
     pub url: Url,
 
@@ -39,7 +40,7 @@ pub struct Request<'a, 'b: 'a> {
     pub headers: Headers,
 
     /// The request body as a reader.
-    pub body: Body<'a, 'b>,
+    pub body: Body<'a>,
 
     /// The request method.
     pub method: Method,
@@ -48,7 +49,7 @@ pub struct Request<'a, 'b: 'a> {
     pub extensions: TypeMap
 }
 
-impl<'a, 'b> Debug for Request<'a, 'b> {
+impl<'a> Debug for Request<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         try!(writeln!(f, "Request {{"));
 
@@ -62,12 +63,12 @@ impl<'a, 'b> Debug for Request<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Request<'a, 'b> {
+impl<'a, 'b> Request<'a> {
     /// Create a request from an HttpRequest.
     ///
     /// This constructor consumes the HttpRequest.
     pub fn from_http(req: HttpRequest<'a, 'b>, local_addr: SocketAddr, protocol: &Protocol)
-                     -> Result<Request<'a, 'b>, String> {
+                     -> Result<Request<'a>, String> {
         let (addr, method, headers, uri, _, reader) = req.deconstruct();
 
         let url = match uri {
@@ -109,23 +110,26 @@ impl<'a, 'b> Request<'a, 'b> {
 }
 
 /// The body of an Iron request,
-pub struct Body<'a, 'b: 'a>(HttpReader<&'a mut buffer::BufReader<&'b mut NetworkStream>>);
+pub struct Body<'a>(Box<HttpReader<&'a mut Read>>);
 
-impl<'a, 'b> Body<'a, 'b> {
+impl<'a> Body<'a> {
     /// Create a new reader for use in an Iron request from a hyper HttpReader.
-    pub fn new(reader: HttpReader<&'a mut buffer::BufReader<&'b mut NetworkStream>>) -> Body<'a, 'b> {
-        Body(reader)
+    pub fn new<'b>(reader: HttpReader<&'a mut buffer::BufReader<&'b mut NetworkStream>>) -> Body<'a> {
+        let transmuted: Box<HttpReader<&mut Read>> = unsafe {
+            transmute(box reader)
+        };
+        Body(transmuted)
     }
 }
 
-impl<'a, 'b> Read for Body<'a, 'b> {
+impl<'a> Read for Body<'a> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.0.read(buf)
     }
 }
 
 // Allow plugins to attach to requests.
-impl<'a, 'b> Extensible for Request<'a, 'b> {
+impl<'a> Extensible for Request<'a> {
     fn extensions(&self) -> &TypeMap {
         &self.extensions
     }
@@ -135,5 +139,5 @@ impl<'a, 'b> Extensible for Request<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Plugin for Request<'a, 'b> {}
-impl<'a, 'b> Set for Request<'a, 'b> {}
+impl<'a> Plugin for Request<'a> {}
+impl<'a> Set for Request<'a> {}
