@@ -110,6 +110,7 @@ impl<'a, 'b> Request<'a> {
 }
 
 /// The body of an Iron request,
+#[derive(Debug)]
 pub struct Body<'a>(Box<HttpReader<&'a mut Read>>);
 
 impl<'a> Body<'a> {
@@ -119,6 +120,21 @@ impl<'a> Body<'a> {
             transmute(box reader)
         };
         Body(transmuted)
+    }
+    pub fn from_reader(reader: &'a mut Read, len: Option<u64>, chunked: bool) -> Body<'a> {
+        let http_reader = if len.is_some() && ! chunked {
+            HttpReader::SizedReader(reader, len.unwrap())
+        }
+        else if chunked { 
+            HttpReader::ChunkedReader(reader, len)
+        }
+        else if ! len.is_some() && ! chunked {
+            HttpReader::EofReader(reader)
+        }
+        else {
+            HttpReader::EmptyReader(reader)
+        };
+        Body(box http_reader)
     }
 }
 
